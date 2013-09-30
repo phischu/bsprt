@@ -21,6 +21,7 @@ executable bsprt
   -- other-modules:       
   -- other-extensions:    
   build-depends:       base,
+                       gloss,
                        gloss-raster,
                        linear
   -- hs-source-dirs:      
