@@ -4,7 +4,7 @@ import Graphics.Gloss.Raster.Field (
     playField,Display(InWindow),Color,red,white)
 import Graphics.Gloss.Interface.Pure.Game (Event(EventMotion))
 
-import Linear (V3(V3),dot,negated,(^-^),(^+^),(*^),cross)
+import Linear (V3(V3),dot,(^-^),(^+^),(*^),cross)
 
 import Data.Maybe (catMaybes,listToMaybe,fromMaybe)
 
@@ -14,54 +14,35 @@ type Normal = V3 Float
 type T = Float
 
 data Tree b a = Leaf a | Branch (Tree b a) b (Tree b a)
+    deriving (Show)
 
 data Plane = Plane Point Normal
+    deriving (Show)
 
 data Ray = Ray Point Direction
+    deriving (Show)
 
 type BSPTree a = Tree Plane a
 
-type Theta = Float
-type Phi = Float
-data Camera = Camera Point Theta Phi
-
-cameraForward :: Camera -> Direction
-cameraForward (Camera _ theta phi) = V3 (sin phi * sin theta) (sin theta) (cos phi * sin theta)
-
-cameraRight :: Camera -> Direction
-cameraRight camera = cameraForward camera `cross` (V3 0 1 0)
-
-cameraUp :: Camera -> Direction
-cameraUp camera = cameraRight camera `cross` cameraForward camera
-
-cameraRay :: Camera -> Float -> Float -> Ray
-cameraRay camera@(Camera cameraposition _ _) x y =
-    Ray cameraposition (cameraForward camera ^+^ (x *^ cameraRight camera) ^+^ (y *^ cameraUp camera))
-
 distance :: Point -> Plane -> Float
-distance point (Plane planeposition planenormal) = (point ^-^ planeposition) `dot` planenormal
-
-align :: Ray -> BSPTree a -> BSPTree a
-align _ (Leaf a) = Leaf a
-align (Ray _ raydirection) (Branch l (Plane planeposition planenormal) r)
-    | raydirection `dot` planenormal < 0 = Branch r (Plane planeposition (negated planenormal)) l
-    | otherwise = Branch l (Plane planeposition planenormal) r
+distance rayposition (Plane planeposition planenormal) = (planeposition ^-^ rayposition) `dot` planenormal
 
 intersections :: Ray -> BSPTree a -> Tree T a
 intersections _ (Leaf a) = Leaf a
-intersections
-    ray@(Ray rayposition raydirection)
-    (Branch l plane@(Plane _ planenormal) r) =
-        Branch
-            (intersections ray l)
-            (distance rayposition plane / raydirection `dot` planenormal)
-            (intersections ray r)
+intersections ray (Branch l plane r) = Branch leftintersections t righintersections where
+    Ray rayposition raydirection = ray
+    Plane _ planenormal = plane
+    (leftintersections,righintersections) = if raydirection `dot` planenormal > 0
+        then (intersections ray l,intersections ray r)
+        else (intersections ray r,intersections ray l)
+    t = distance rayposition plane / raydirection `dot` planenormal
 
-hits :: T -> Tree T a -> [a]
-hits _ (Leaf a) = [a]
-hits t (Branch l t' r)
-    | t < t'    = hits t l ++ hits t' r
-    | otherwise = hits t r
+hits :: T -> T -> Tree T a -> [a]
+hits _ _      (Leaf a) = [a]
+hits near far (Branch l t' r)
+    | t' < near = []
+    | t' > far  = []
+    | otherwise = hits near t' l ++ hits t' far r
 
 box :: BSPTree (Maybe Color)
 box = Branch (Leaf Nothing) (Plane (V3 (-1) 0 0) (V3 1 0 0)) (
@@ -73,10 +54,7 @@ box = Branch (Leaf Nothing) (Plane (V3 (-1) 0 0) (V3 1 0 0)) (
       Leaf (Just red)))))))
 
 trace :: Ray -> BSPTree (Maybe Color) -> Maybe Color
-trace ray = listToMaybe . catMaybes . hits 0 . intersections ray . align ray
-
-testCamera :: Camera
-testCamera = Camera (V3 50 50 50) (-1) 0
+trace ray = listToMaybe . catMaybes . hits 0 1000 . intersections ray
 
 render :: Camera -> BSPTree (Maybe Color) -> (Float,Float) -> Color
 render camera tree (x,y) = fromMaybe white (trace (cameraRay camera x y) tree)
@@ -99,6 +77,30 @@ main = playField
     (\camera (x,y) -> render camera box (x,y))
     updateCamera
     (const id)
+
+testCamera :: Camera
+testCamera = Camera (V3 1 2 2) (-1) 0
+
+type Theta = Float
+type Phi = Float
+
+data Camera = Camera Point Theta Phi
+    deriving (Show)
+
+cameraRay :: Camera -> Float -> Float -> Ray
+cameraRay camera@(Camera cameraposition _ _) x y =
+    Ray cameraposition (cameraForward camera ^+^ (x *^ cameraRight camera) ^+^ (y *^ cameraUp camera))
+
+cameraForward :: Camera -> Direction
+cameraForward (Camera _ theta phi) = V3 (sin phi * sin theta) (sin theta) (cos phi * sin theta)
+
+cameraRight :: Camera -> Direction
+cameraRight camera = cameraForward camera `cross` (V3 0 1 0)
+
+cameraUp :: Camera -> Direction
+cameraUp camera = cameraRight camera `cross` cameraForward camera
+
+
 
 
 
